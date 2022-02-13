@@ -21,56 +21,58 @@ import time
 import heapq
 import threading
 from collections import deque
+import bufferq.errors as errors
 
 
-class QueueError(Exception):
-    """Base Exception for queues in bufferq."""
-
-
-class QueueEmpty(QueueError):
-    """Exception denoting an empty queue."""
-
-
-class QueueFull(QueueError):
-    """Exception denoting the queue is full (and not receiving items)."""
-
-    def __init__(self, remaining_items, *args):
-        super(QueueFull, self).__init__(*args)
-        self.remaining_items = remaining_items
-
-
-class QueueStopped(QueueError):
-    """Exception denoting that the queue has stopped."""
-
-
-class SimpleQueueBase(metaclass=abc.ABCMeta):
+class QueueBase(metaclass=abc.ABCMeta):
     """Queue class that supports a generator interface."""
 
-    def __init__(self):
+    def __init__(self, maxsize=0):
+        self._maxsize = maxsize
         self._stopped = threading.Event()
         # Define the lock explicitly here, in case subclasses or similar
         # want to define more condition variables on the same lock.
         self._lock = threading.RLock()
-        self._cond = threading.Condition(self._lock)
 
-    def push(self, item):
+        # Use the same lock for both conditions.
+        self._empty_cond = threading.Condition(self._lock)
+        self._full_cond = threading.Condition(self._lock)
+
+    @property
+    def maxsize(self):
+        """Return the configured maximum size for this queue.
+
+        If non-positive, the size is presumed to be unlimited.
+        """
+        return self._maxsize
+
+    def stop(self):
+        self._stopped.set()
+        # Not 100% sure if it is necessary to acquire the lock before notifying
+        # the different condition variables.
+        with self._lock:
+            self._empty_cond.notify_all()
+            self._full_cond.notify_all()
+
+    def push(self, item, timeout=0):
         """Put the given item onto the queue."""
         self.put_multi([item])
 
-    def push_multi(self, items):
+    def push_multi(self, items, timeout=0):
         """Put the given list of items onto the queue."""
         count = len(items)
         if count <= 0:
-            raise QueueError('No items to push.')
-        with self._cond:
+            # Nothing to push.
+            return
+        with self._full_cond:
             try:
                 self._push_items(items)
-            except QueueFull as qf:
+            except errors.QueueFull as qf:
                 # Only notify the number of items actually added.
                 count -= len(qf.remaining_items)
                 raise
             finally:
-                self._cond.notify(count)
+                self._empty_cond.notify(count)
 
     put = push
     """Alias to push()."""
@@ -78,12 +80,12 @@ class SimpleQueueBase(metaclass=abc.ABCMeta):
     put_multi = push_multi
     """Alias to push_multi()."""
 
-    def pop(self, timeout=0):
+    def pop(self, timeout=None):
         """Pop the next item from the queue."""
         items = self._pop_item_helper(1, timeout=timeout)
         return items[0]
 
-    def pop_items(self, count=1, timeout=0):
+    def pop_items(self, count=1, timeout=None):
         """Pop the next items in the queue.
 
         If count <= 0, this will pop all items in the queue. Otherwise, this
@@ -92,7 +94,7 @@ class SimpleQueueBase(metaclass=abc.ABCMeta):
         """
         return self._pop_item_helper(count, timeout)
 
-    def pop_all(self, timeout=0):
+    def pop_all(self, timeout=None):
         """Pop all of the items in the queue."""
         return self._pop_item_helper(-1, timeout=timeout)
 
@@ -111,12 +113,12 @@ class SimpleQueueBase(metaclass=abc.ABCMeta):
         This iterator will block until items are available, then will yield
         all of them at each iteration.
         """
-        while not self._stopped.is_set():
+        while True:
             try:
                 yield self.pop_all(timeout=None)
-            except QueueEmpty:
+            except errors.QueueEmpty:
                 continue
-            except QueueStopped:
+            except errors.QueueStopped:
                 return
 
     def consume_items_generator(self, count=1):
@@ -125,12 +127,12 @@ class SimpleQueueBase(metaclass=abc.ABCMeta):
         This iterator will block until items are available, then will yield
         _up to_ 'count' items in one iteration.
         """
-        while not self._stopped.is_set():
+        while True:
             try:
-                yield self.pop_items(count, timeout=None)
-            except QueueEmpty:
+                yield self.pop_items(count, timeout=-1)
+            except errors.QueueEmpty:
                 continue
-            except QueueStopped:
+            except errors.QueueStopped:
                 return
 
     def consume_one_generator(self):
@@ -140,12 +142,12 @@ class SimpleQueueBase(metaclass=abc.ABCMeta):
         them as appropriate. When the queue is stopped, this generator will
         quietly exit.
         """
-        while not self._stopped.is_set():
+        while True:
             try:
-                yield self.pop_item(timeout=None)
-            except QueueEmpty:
+                yield self.pop()
+            except errors.QueueEmpty:
                 continue
-            except QueueStopped:
+            except errors.QueueStopped:
                 return
 
     def qsize(self):
@@ -162,6 +164,40 @@ class SimpleQueueBase(metaclass=abc.ABCMeta):
         """
         raise NotImplementedError('This queue does not implement qsize!')
 
+    #
+    # Helper Methods that manage the Condition Variables
+    #
+    def _push_item_helper(self, items, timeout):
+        """Helper to push the given items to the queue.
+
+        If this times out, it raises a QueueFull with the remaining items set
+        on the exception.
+        """
+        # Store the end timestamp. If 'None', then there is no end timestamp.
+        if timeout is None:
+            end_ts = None
+        elif timeout > 0:
+            end_ts = time.time() + timeout
+        else:  # timeout <= 0
+            # Guarantee that we only iterate over the loop once.
+            end_ts = 0
+
+        while not self._stopped.is_set():
+            with self._full_cond:
+                try:
+                    self._push_items(items)
+                except QueueFull as qf:
+                    # Update the items to insert to be the remaining items.
+                    items = qf.remaining_items
+                    if end_ts is None:
+                        wait_secs = 30
+                    elif time.time() > end_ts:
+                        raise
+                    else:
+                        # Wait for the remaining time.
+                        wait_secs = min(30, end_ts - time.time())
+                    self._full_cond.wait(wait_secs)
+
     def _pop_item_helper(self, count, timeout):
         """Helper to pop up to 'count' items.
 
@@ -173,19 +209,28 @@ class SimpleQueueBase(metaclass=abc.ABCMeta):
         # Store the end timestamp. If 'None', then there is no end timestamp.
         if timeout is None:
             end_ts = None
-        elif timeout == 0:
+        elif timeout > 0:
+            end_ts = time.time() + timeout
+        else:  # timeout <= 0
             # Guarantee that we only iterate over the loop once.
             end_ts = 0
-        else:
-            end_ts = time.time() + timeout
 
-        while not self._stopped.is_set():
-            with self._cond:
+        while True:
+            with self._empty_cond:
                 try:
                     if count <= 0:
-                        return self._pop_all()
-                    return self._pop_items(count)
-                except QueueEmpty:
+                        results = self._pop_all()
+                    else:
+                        results = self._pop_items(count)
+                    # Notify up to the number of items that were removed.
+                    self._full_cond.notify(len(results))
+
+                    # Return the results after notifying _full_cond, since
+                    # items were removed from the queue.
+                    return results
+                except errors.QueueEmpty:
+                    if self._stopped.is_set():
+                        raise errors.QueueStopped()
                     if end_ts is None:
                         wait_secs = 30
                     elif time.time() > end_ts:
@@ -195,11 +240,51 @@ class SimpleQueueBase(metaclass=abc.ABCMeta):
                         # Wait for the remaining time or 30 seconds, whichever
                         # is smaller for good measure.
                         wait_secs = min(30, end_ts - time.time())
-                    self._cond.wait(wait_secs)
-        # If we exit the while-loop, then the queue was explicitly stopped.
-        raise QueueStopped()
+                    self._empty_cond.wait(wait_secs)
+
+    #
+    # Required Overrideable Methods by Subclasses
+    #
+    @abc.abstractmethod
+    def _push_item(self, item):
+        """Push the given item onto the queue without blocking.
+
+        This should push a single item onto the queue, or raise QueueFull
+        if the item could not be added.
+
+        Parameters
+        ----------
+        item: Any
+            The item to push onto the queue.
+
+        Raises
+        ------
+        QueueFull:
+            Raised if the queue is full.
+        QueueStopped:
+            Raised if the queue is stopped.
+        """
+        pass
 
     @abc.abstractmethod
+    def _pop_item(self):
+        """Pop an item from the queue without blocking.
+
+        If no item is available, this should raise `QueueEmpty`.
+
+        Raises
+        ------
+        QueueEmpty:
+            Raised if the queue is full.
+        QueueStopped:
+            Raised if the queue is stopped.
+        """
+        pass
+
+
+    #
+    # Optionally Overrideable in Subclasses
+    #
     def _push_items(self, items):
         """Push the given items onto the queue without blocking.
 
@@ -210,10 +295,28 @@ class SimpleQueueBase(metaclass=abc.ABCMeta):
 
         (If there is no bounds on the queue size, then no exception need be
         raised, of course.)
-        """
-        pass
 
-    @abc.abstractmethod
+        This can be overridden in subclasses if there is a more efficient way
+        to do this operation in bulk; otherwise, this falls back to calling
+            `self._push_item()`
+        individually for each item up until the items can be no longer added.
+        """
+        full = False
+        remaining_items = []
+        for item in items:
+            try:
+                if not full:
+                    self._push_item(item)
+                    continue
+            except errors.QueueFull as qf:
+                full = True
+
+            remaining_items.append(item)
+        if remaining_items:
+            qf = errors.QueueFull('Queue is full!')
+            qf.set_remaining_items(remaining_items)
+            raise qf
+
     def _pop_items(self, max_count):
         """Return up to 'max_count' items from the queue without blocking.
 
@@ -241,9 +344,16 @@ class SimpleQueueBase(metaclass=abc.ABCMeta):
         ------
         QueueEmpty: Raised when there are no items to return.
         """
-        pass
+        result = []
+        for _ in range(max_count):
+            try:
+                result.append(self._pop_item())
+            except errors.QueueEmpty:
+                if result:
+                    return result
+                raise
+        return result
 
-    @abc.abstractmethod
     def _pop_all(self):
         """Return all items in the queue without blocking.
 
@@ -251,26 +361,34 @@ class SimpleQueueBase(metaclass=abc.ABCMeta):
 
         NOTE: This defines an abstraction used to handle different types of
         queues; subclasses should override this as appropriate. This should
-        always return at least one item and no more than 'max_count' items
-        or else raise 'QueueEmpty' if no items are currently available.
+        always return the full contents of the queue and the queue should
+        effectively be empty when exiting this call. If nothing was in the
+        queue to begin with, this should raise 'QueueEmpty'.
+
+        This call does _not_ guarantee any particular order of the elements
+        for speed considerations; if the caller wants the elements sorted
+        (i.e. as might be expected by a PriorityQueue), then it is the
+        responsibility of the caller to do so.
         """
-        pass
+        result = deque()
+        while True:
+            try:
+                result.append(self._pop_item())
+            except errors.QueueEmpty:
+                if result:
+                    return result
+                raise
 
 
 #
 # Implementations for Common Queue Types
 #
-class SimpleQueue(SimpleQueueBase):
-    """Simple queue implementation."""
+class Queue(QueueBase):
+    """Basic FIFO queue implementation."""
 
-    def __init__(self, maxsize=None):
-        super(SimpleQueue, self).__init__()
+    def __init__(self, maxsize=0):
+        super(Queue, self).__init__(maxsize=maxsize)
         self._items = deque()
-        self._maxsize = maxsize if maxsize else -1
-
-    @property
-    def maxsize(self):
-        return self._maxsize
 
     def qsize(self):
         """Return the number of elements in the queue.
@@ -279,36 +397,19 @@ class SimpleQueue(SimpleQueueBase):
         """
         return len(self._items)
 
-    def _push_items(self, items):
+    def _push_item(self, item):
         if self._maxsize <= 0:
-            self._items.extend(items)
-            return
-        available = self._maxsize - len(self._items)
-        if len(items) <= insert_count:
-            self._items.extend(items)
-        elif available <= 0:
-            raise QueueFull(items, "Queue is completely full!")
+            self._items.append(item)
+        elif len(self._items) == self.maxsize:
+            raise errors.QueueFull()
         else:
-            # Insert the items that could be inserted, then raise QueueFull
-            # with the remaining items. The items should be added from the
-            # start, with the remainder raised in the exception.
-            self._items.extend(items[0:available])
-            raise QueueFull(
-                items[available:],
-                "Queue filled up, only {} items inserted.".format(available)
-            )
+            # There is room. Add the item.
+            self._items.append(item)
 
-    def _pop_items(self, max_count):
-        result = []
+    def _pop_item(self):
         if not self._items:
-            raise QueueEmpty()
-        count = min(len(self._items), max_count)
-        for i in range(count):
-            result.append(self._items.popleft())
-
-        # 'result' should never be empty.
-        assert len(result) > 0, "Should have raise QueueEmpty..."
-        return result
+            raise errors.QueueEmpty()
+        return self._items.popleft()
 
     def _pop_all(self):
         # Just swap out a new deque for speed.
@@ -317,33 +418,26 @@ class SimpleQueue(SimpleQueueBase):
         return result
 
 
-class LIFOQueue(SimpleQueue):
+class LIFOQueue(Queue):
     """A Last-In, First-out queue (i.e. a Stack)."""
 
-    def _pop_items(self, max_count):
-        result = []
+    # NOTE: Implementation is identical to a generic Queue, except that
+    # elements are popped from the same side as they are added.
+    def _pop_item(self):
         if not self._items:
-            raise QueueEmpty()
-        count = min(len(self._items), max_count)
-        for i in range(count):
-            result.append(self._items.pop())
-
-        # 'result' should never be empty.
-        assert len(result) > 0, "Should have raise QueueEmpty..."
-        return result
+            raise errors.QueueEmpty()
+        return self._items.pop()
 
 
-class PriorityQueue(SimpleQueueBase):
-    """Priority Queue implementation."""
+class PriorityQueue(QueueBase):
+    """Priority Queue implementation.
 
-    def __init__(self, maxsize=None):
-        super(SimpleQueue, self).__init__()
+    Internally manages items via a simple heap.
+    """
+
+    def __init__(self, maxsize=0):
+        super(PriorityQueue, self).__init__(maxsize=maxsize)
         self._items = []
-        self._maxsize = maxsize
-
-    @property
-    def maxsize(self):
-        return self._maxsize
 
     def qsize(self):
         """Return the number of elements in the queue.
@@ -352,40 +446,15 @@ class PriorityQueue(SimpleQueueBase):
         """
         return len(self._items)
 
-    def _push_items(self, items):
-        if self._maxsize <= 0:
-            self._items.extend(items)
-            return
-        available = self._maxsize - len(self._items)
-        if len(items) <= insert_count:
-            for item in items:
-                heapq.heappush(self._items, item)
-        elif available <= 0:
-            raise QueueFull(items, "Queue is completely full!")
-        else:
-            # Insert the items that could be inserted, then raise QueueFull
-            # with the remaining items. The items should be added from the
-            # start, with the remainder raised in the exception.
-            i = 0
-            for item in itertools.islice(items, available):
-                heapq.heappush(self._items, item)
-            raise QueueFull(
-                items[available:],
-                "Queue filled up, only {} items inserted.".format(available)
-            )
+    def _push_item(self, item):
+        if self.maxsize > 0 and self.maxsize > len(self._items):
+            raise errors.QueueFull()
+        heapq.heappush(self._items, item)
 
-    def _pop_items(self, max_count):
-        result = []
+    def _pop_item(self):
         if not self._items:
-            raise QueueEmpty()
-        count = min(len(self._items), max_count)
-        while count > 0:
-            count -= 1
-            result.append(heapq.heappop(self._items))
-
-        # 'result' should never be empty.
-        assert len(result) > 0, "Should have raise QueueEmpty..."
-        return result
+            raise errors.QueueEmpty()
+        return heapq.heappop(self._items)
 
     def _pop_all(self):
         # Just swap out the list.

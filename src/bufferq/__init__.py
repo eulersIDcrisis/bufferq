@@ -18,3 +18,11 @@ try:
     __version__ = pkg_resources.get_distribution('bufferq').version
 except Exception:
     __version__ = 'unknown'
+
+# Bring the following imports into scope.
+from bufferq.queues import (
+    QueueBase, Queue, PriorityQueue, LIFOQueue
+)
+from bufferq.errors import (
+    QueueError, QueueEmpty, QueueFull, QueueStopped
+)
