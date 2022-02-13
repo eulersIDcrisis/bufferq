@@ -13,7 +13,7 @@ Queues from `bufferq` are simple to use with a simple interface:
 import threading
 import bufferq
 
-q = bufferq.SimpleQueue()
+q = bufferq.Queue()
 
 def consumer(q):
     for item in q.consume_one_generator():
@@ -138,12 +138,12 @@ these common cases; the consumer can simply iterate to obtain the next item
 instead of handling the complicated `pop/get` logic that might otherwise be
 required.
 
-This is all provided by `bufferq.SimpleQueue` like below:
+This is all provided by `bufferq.Queue` like below:
 ```python
 import threading
 import bufferq
 
-q = bufferq.SimpleQueue()
+q = bufferq.Queue()
 def worker():
 	for item in q.consume_one_generator():
         print(f'Working on {item}')

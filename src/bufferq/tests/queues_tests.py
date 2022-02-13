@@ -73,6 +73,29 @@ class QueueBaseTests(unittest.TestCase):
             expected = list(range(5 * i, 5 * (i + 1)))
             self.assertEqual(expected, items)
 
+    def test_stop_and_reset(self):
+        q = bufferq.Queue()
+
+        q.put('a')
+        q.stop()
+        with self.assertRaises(bufferq.QueueStopped):
+            q.put('a')
+
+        item = q.get(timeout=1)
+        self.assertEqual('a', item)
+
+        # This should raise QueueStopped to flag that the queue is both
+        # empty and stopped.
+        with self.assertRaises(bufferq.QueueStopped):
+            q.get(timeout=0)
+
+        q.reset()
+        # After reset, this should succeed again.
+        q.put('b')
+
+        item = q.get(timeout=0)
+        self.assertEqual('b', item)
+
     def test_basic_producer_consumer(self):
         q = bufferq.Queue()
 

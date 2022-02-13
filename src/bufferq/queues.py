@@ -29,7 +29,7 @@ class QueueBase(metaclass=abc.ABCMeta):
 
     def __init__(self, maxsize=0):
         self._maxsize = maxsize
-        self._stopped = threading.Event()
+        self._stop_event = threading.Event()
         # Define the lock explicitly here, in case subclasses or similar
         # want to define more condition variables on the same lock.
         self._lock = threading.RLock()
@@ -47,12 +47,21 @@ class QueueBase(metaclass=abc.ABCMeta):
         return self._maxsize
 
     def stop(self):
-        self._stopped.set()
+        """Stop the queue (but permit draining items still in it).
+
+        Stopping the queue prevents items from being added to it until it is
+        reset.
+        """
+        self._stop_event.set()
         # Not 100% sure if it is necessary to acquire the lock before notifying
         # the different condition variables.
         with self._lock:
             self._empty_cond.notify_all()
             self._full_cond.notify_all()
+
+    def reset(self):
+        self._stop_event.clear()
+        pass
 
     def push(self, item, timeout=0):
         """Put the given item onto the queue."""
@@ -65,6 +74,8 @@ class QueueBase(metaclass=abc.ABCMeta):
             # Nothing to push.
             return
         with self._full_cond:
+            if self._stop_event.is_set():
+                raise errors.QueueStopped()
             try:
                 self._push_items(items)
             except errors.QueueFull as qf:
@@ -182,7 +193,7 @@ class QueueBase(metaclass=abc.ABCMeta):
             # Guarantee that we only iterate over the loop once.
             end_ts = 0
 
-        while not self._stopped.is_set():
+        while not self._stop_event.is_set():
             with self._full_cond:
                 try:
                     self._push_items(items)
@@ -229,7 +240,7 @@ class QueueBase(metaclass=abc.ABCMeta):
                     # items were removed from the queue.
                     return results
                 except errors.QueueEmpty:
-                    if self._stopped.is_set():
+                    if self._stop_event.is_set():
                         raise errors.QueueStopped()
                     if end_ts is None:
                         wait_secs = 30
