@@ -166,6 +166,7 @@ class PriorityQueueTests(unittest.TestCase):
 
         q.put_multi(items)
 
+        # The items should be returned in order due to the relative priority.
         for i in range(20):
             self.assertEqual(i, q.pop(timeout=0))
 

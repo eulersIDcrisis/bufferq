@@ -16,18 +16,23 @@
 
 Base implementation module for the iterator-style Queues.
 """
+# Typing Imports
+from typing import Union, Iterable, Sequence, Optional, Any
+from numbers import Number
+# Standard Library Imports
 import abc
 import time
 import heapq
 import threading
 from collections import deque
+# Local imports
 import bufferq.errors as errors
 
 
 class QueueBase(metaclass=abc.ABCMeta):
     """Queue class that supports a generator interface."""
 
-    def __init__(self, maxsize=0):
+    def __init__(self, maxsize: int =0):
         self._maxsize = maxsize
         self._stop_event = threading.Event()
         # Define the lock explicitly here, in case subclasses or similar
@@ -39,7 +44,7 @@ class QueueBase(metaclass=abc.ABCMeta):
         self._full_cond = threading.Condition(self._lock)
 
     @property
-    def maxsize(self):
+    def maxsize(self) -> int:
         """Return the configured maximum size for this queue.
 
         If non-positive, the size is presumed to be unlimited.
@@ -63,11 +68,11 @@ class QueueBase(metaclass=abc.ABCMeta):
         self._stop_event.clear()
         pass
 
-    def push(self, item, timeout=0):
+    def push(self, item: Any, timeout: Number =0):
         """Put the given item onto the queue."""
         self.put_multi([item])
 
-    def push_multi(self, items, timeout=0):
+    def push_multi(self, items, timeout: Number =0):
         """Put the given list of items onto the queue."""
         count = len(items)
         if count <= 0:
@@ -91,12 +96,13 @@ class QueueBase(metaclass=abc.ABCMeta):
     put_multi = push_multi
     """Alias to push_multi()."""
 
-    def pop(self, timeout=None):
+    def pop(self, timeout: Optional[Number] =None) -> Any:
         """Pop the next item from the queue."""
         items = self._pop_item_helper(1, timeout=timeout)
         return items[0]
 
-    def pop_items(self, count=1, timeout=None):
+    def pop_items(self, count: int =1, timeout: Optional[Number]=None) \
+            -> Sequence[Any]:
         """Pop the next items in the queue.
 
         If count <= 0, this will pop all items in the queue. Otherwise, this
@@ -105,7 +111,7 @@ class QueueBase(metaclass=abc.ABCMeta):
         """
         return self._pop_item_helper(count, timeout)
 
-    def pop_all(self, timeout=None):
+    def pop_all(self, timeout: Optional[Number]=None) -> Sequence[Any]:
         """Pop all of the items in the queue."""
         return self._pop_item_helper(-1, timeout=timeout)
 
@@ -132,7 +138,7 @@ class QueueBase(metaclass=abc.ABCMeta):
             except errors.QueueStopped:
                 return
 
-    def consume_items_generator(self, count=1):
+    def consume_items_generator(self, count: int =1):
         """Return a generator that removes 'count' items at each iteration.
 
         This iterator will block until items are available, then will yield
@@ -161,7 +167,7 @@ class QueueBase(metaclass=abc.ABCMeta):
             except errors.QueueStopped:
                 return
 
-    def qsize(self):
+    def qsize(self) -> int:
         """Return the number of elements in the queue.
 
         Subclasses should override this as appropriate.
@@ -178,7 +184,7 @@ class QueueBase(metaclass=abc.ABCMeta):
     #
     # Helper Methods that manage the Condition Variables
     #
-    def _push_item_helper(self, items, timeout):
+    def _push_item_helper(self, items: Any, timeout: Optional[Number]):
         """Helper to push the given items to the queue.
 
         If this times out, it raises a QueueFull with the remaining items set
@@ -209,7 +215,7 @@ class QueueBase(metaclass=abc.ABCMeta):
                         wait_secs = min(30, end_ts - time.time())
                     self._full_cond.wait(wait_secs)
 
-    def _pop_item_helper(self, count, timeout):
+    def _pop_item_helper(self, count: int, timeout: Optional[Number]=None):
         """Helper to pop up to 'count' items.
 
         If 'count <= 0', then return all items.
@@ -257,7 +263,7 @@ class QueueBase(metaclass=abc.ABCMeta):
     # Required Overrideable Methods by Subclasses
     #
     @abc.abstractmethod
-    def _push_item(self, item):
+    def _push_item(self, item: Any):
         """Push the given item onto the queue without blocking.
 
         This should push a single item onto the queue, or raise QueueFull
@@ -278,7 +284,7 @@ class QueueBase(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def _pop_item(self):
+    def _pop_item(self) -> Any:
         """Pop an item from the queue without blocking.
 
         If no item is available, this should raise `QueueEmpty`.
@@ -296,7 +302,7 @@ class QueueBase(metaclass=abc.ABCMeta):
     #
     # Optionally Overrideable in Subclasses
     #
-    def _push_items(self, items):
+    def _push_items(self, items: Iterable[Any]):
         """Push the given items onto the queue without blocking.
 
         This should push as many items onto the queue as possible; when not
@@ -328,7 +334,7 @@ class QueueBase(metaclass=abc.ABCMeta):
             qf.set_remaining_items(remaining_items)
             raise qf
 
-    def _pop_items(self, max_count):
+    def _pop_items(self, max_count: int):
         """Return up to 'max_count' items from the queue without blocking.
 
         If no items are available, this should raise `QueueEmpty`.
@@ -397,18 +403,18 @@ class QueueBase(metaclass=abc.ABCMeta):
 class Queue(QueueBase):
     """Basic FIFO queue implementation."""
 
-    def __init__(self, maxsize=0):
+    def __init__(self, maxsize: int =0):
         super(Queue, self).__init__(maxsize=maxsize)
         self._items = deque()
 
-    def qsize(self):
+    def qsize(self) -> int:
         """Return the number of elements in the queue.
 
         NOTE: The result is _not_ thread-safe!
         """
         return len(self._items)
 
-    def _push_item(self, item):
+    def _push_item(self, item: Any):
         if self._maxsize <= 0:
             self._items.append(item)
         elif len(self._items) == self.maxsize:
@@ -417,12 +423,12 @@ class Queue(QueueBase):
             # There is room. Add the item.
             self._items.append(item)
 
-    def _pop_item(self):
+    def _pop_item(self) -> Any:
         if not self._items:
             raise errors.QueueEmpty()
         return self._items.popleft()
 
-    def _pop_all(self):
+    def _pop_all(self) -> Sequence[Any]:
         # Just swap out a new deque for speed.
         result = self._items
         self._items = deque()
@@ -434,7 +440,7 @@ class LIFOQueue(Queue):
 
     # NOTE: Implementation is identical to a generic Queue, except that
     # elements are popped from the same side as they are added.
-    def _pop_item(self):
+    def _pop_item(self) -> Any:
         if not self._items:
             raise errors.QueueEmpty()
         return self._items.pop()
@@ -446,11 +452,11 @@ class PriorityQueue(QueueBase):
     Internally manages items via a simple heap.
     """
 
-    def __init__(self, maxsize=0):
+    def __init__(self, maxsize: int =0):
         super(PriorityQueue, self).__init__(maxsize=maxsize)
         self._items = []
 
-    def qsize(self):
+    def qsize(self) -> int:
         """Return the number of elements in the queue.
 
         NOTE: The result is _not_ thread-safe!
@@ -462,12 +468,12 @@ class PriorityQueue(QueueBase):
             raise errors.QueueFull()
         heapq.heappush(self._items, item)
 
-    def _pop_item(self):
+    def _pop_item(self) -> Any:
         if not self._items:
             raise errors.QueueEmpty()
         return heapq.heappop(self._items)
 
-    def _pop_all(self):
+    def _pop_all(self) -> Sequence[Any]:
         # Just swap out the list.
         # TODO: Should the items actually be sorted? Most cases that pop
         # all of the elements might not strictly care about the exact order
