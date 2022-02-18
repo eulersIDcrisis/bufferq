@@ -17,8 +17,10 @@
 Base implementation module for the iterator-style Queues.
 """
 # Typing Imports
-from typing import Union, Iterable, Sequence, Optional, Any
-from numbers import Number
+from typing import (
+    Union, Iterable, Sequence, Optional, Any, Deque, List,
+    Generator
+)
 # Standard Library Imports
 import abc
 import time
@@ -27,6 +29,9 @@ import threading
 from collections import deque
 # Local imports
 import bufferq.errors as errors
+
+# Common typing.
+Number = Union[int, float]
 
 
 class QueueBase(metaclass=abc.ABCMeta):
@@ -124,7 +129,7 @@ class QueueBase(metaclass=abc.ABCMeta):
     get_all = pop_all
     """Alias to pop_all()."""
 
-    def consume_all_generator(self):
+    def consume_all_generator(self) -> Generator[Sequence[Any], None, None]:
         """Return a generator that removes all items at each iteration.
 
         This iterator will block until items are available, then will yield
@@ -138,7 +143,8 @@ class QueueBase(metaclass=abc.ABCMeta):
             except errors.QueueStopped:
                 return
 
-    def consume_items_generator(self, count: int =1):
+    def consume_items_generator(self, count: int =1) \
+            -> Generator[Sequence[Any], None, None]:
         """Return a generator that removes 'count' items at each iteration.
 
         This iterator will block until items are available, then will yield
@@ -146,13 +152,13 @@ class QueueBase(metaclass=abc.ABCMeta):
         """
         while True:
             try:
-                yield self.pop_items(count, timeout=-1)
+                yield self.pop_items(count, timeout=None)
             except errors.QueueEmpty:
                 continue
             except errors.QueueStopped:
                 return
 
-    def consume_one_generator(self):
+    def consume_one_generator(self) -> Generator[Any, None, None]: 
         """Return a generator that consumes one item at a time from the queue.
 
         This iterator will block until items are available, then will yield
@@ -203,16 +209,16 @@ class QueueBase(metaclass=abc.ABCMeta):
             with self._full_cond:
                 try:
                     self._push_items(items)
-                except QueueFull as qf:
+                except errors.QueueFull as qf:
                     # Update the items to insert to be the remaining items.
                     items = qf.remaining_items
                     if end_ts is None:
-                        wait_secs = 30
+                        wait_secs = 30.0
                     elif time.time() > end_ts:
                         raise
                     else:
                         # Wait for the remaining time.
-                        wait_secs = min(30, end_ts - time.time())
+                        wait_secs = min(30.0, end_ts - time.time())
                     self._full_cond.wait(wait_secs)
 
     def _pop_item_helper(self, count: int, timeout: Optional[Number]=None):
@@ -249,14 +255,14 @@ class QueueBase(metaclass=abc.ABCMeta):
                     if self._stop_event.is_set():
                         raise errors.QueueStopped()
                     if end_ts is None:
-                        wait_secs = 30
+                        wait_secs = 30.0
                     elif time.time() > end_ts:
                         # We've timed out, so raise QueueEmpty as before.
                         raise
                     else:
                         # Wait for the remaining time or 30 seconds, whichever
                         # is smaller for good measure.
-                        wait_secs = min(30, end_ts - time.time())
+                        wait_secs = min(30.0, end_ts - time.time())
                     self._empty_cond.wait(wait_secs)
 
     #
@@ -325,7 +331,7 @@ class QueueBase(metaclass=abc.ABCMeta):
                 if not full:
                     self._push_item(item)
                     continue
-            except errors.QueueFull as qf:
+            except errors.QueueFull:
                 full = True
 
             remaining_items.append(item)
@@ -405,7 +411,7 @@ class Queue(QueueBase):
 
     def __init__(self, maxsize: int =0):
         super(Queue, self).__init__(maxsize=maxsize)
-        self._items = deque()
+        self._items: Deque[Any] = deque()
 
     def qsize(self) -> int:
         """Return the number of elements in the queue.
@@ -454,7 +460,7 @@ class PriorityQueue(QueueBase):
 
     def __init__(self, maxsize: int =0):
         super(PriorityQueue, self).__init__(maxsize=maxsize)
-        self._items = []
+        self._items: List[Any] = []
 
     def qsize(self) -> int:
         """Return the number of elements in the queue.
