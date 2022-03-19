@@ -1,7 +1,27 @@
-[build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
+[tool.poetry]
+name = "bufferq"
+version = "0.0.3"
+description = "Queue Library with an improved interface."
+authors = ["Aaron Gibson <eulersidcrisis@yahoo.com>"]
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/eulersIDcrisis/bufferq"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers"
 ]
-build-backend = "setuptools.build_meta"
 
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/eulersIDcrisis/bufferq/issues"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.1.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
