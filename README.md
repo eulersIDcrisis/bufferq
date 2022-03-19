@@ -145,7 +145,7 @@ import bufferq
 
 q = bufferq.Queue()
 def worker():
-	for item in q.consume_one_generator():
+    for item in q.consume_one_generator():
         print(f'Working on {item}')
         print(f'Finished {item}')
 
