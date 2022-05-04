@@ -29,5 +29,5 @@ from bufferq.errors import (
 
 # Bring the following Asynchronous queues into scope as well.
 from bufferq.async_queues import (
-    AsyncQueueBase, AsyncQueue
+    AsyncQueueBase, AsyncQueue, AsyncLIFOQueue, AsyncPriorityQueue
 )

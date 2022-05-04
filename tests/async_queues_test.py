@@ -7,7 +7,7 @@ import sys
 import asyncio
 import inspect
 from functools import wraps
-from bufferq import AsyncQueue
+from bufferq import AsyncQueue, AsyncLIFOQueue, AsyncPriorityQueue
 
 
 def async_test(timeout=5):
@@ -42,10 +42,14 @@ class AsyncQueueTest(unittest.TestCase):
         for i in range(10):
             await q.push(i)
 
+        self.assertEqual(10, q.qsize())
+
         # Now, pop the items from the queue.
         for i in range(10):
             item = await q.pop()
             self.assertEqual(i, item)
+
+        self.assertEqual(0, q.qsize())
 
     @async_test()
     async def test_async_queue_generator(self):
@@ -65,6 +69,36 @@ class AsyncQueueTest(unittest.TestCase):
         producer_fut = asyncio.create_task(producer())
         consumer_fut = asyncio.create_task(consumer())
         await asyncio.gather(producer_fut, consumer_fut)
+
+    @async_test()
+    async def test_async_lifo_queue(self):
+        q = AsyncLIFOQueue()
+
+        for i in range(100):
+            await q.push(i)
+
+        # Stop the queue. It should still yield items until drained.
+        await q.stop()
+
+        expected = 99
+        async for item in q.consume_one_generator():
+            self.assertEqual(expected, item)
+            expected -= 1
+
+    @async_test()
+    async def test_async_priority_queue(self):
+        q = AsyncPriorityQueue()
+        # Iterate from 100 -> 0
+        for i in range(100, -1, -1):
+            await q.push(i)
+
+        # Stop the queue. It should still yield items until drained.
+        await q.stop()
+
+        expected = 0
+        async for item in q.consume_one_generator():
+            self.assertEqual(expected, item)
+            expected += 1
 
 
 if __name__ == '__main__':
