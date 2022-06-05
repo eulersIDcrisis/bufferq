@@ -10,33 +10,8 @@ from functools import wraps
 from bufferq import AsyncQueue, AsyncLIFOQueue, AsyncPriorityQueue
 
 
-def async_test(timeout=5):
-    """Decorator that flags a function/method as an asynchronous test."""
+class AsyncQueueTest(unittest.IsolatedAsyncioTestCase):
 
-    def _outer(func):
-        if not inspect.iscoroutinefunction(func):
-            raise TypeError("'{}' is not a coroutine!".format(func))
-
-        @wraps(func)
-        def new_func(*args, **kwargs):
-            # Allocate an IOLoop.
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            async def _runner():
-                await asyncio.wait_for(func(*args, **kwargs), timeout)
-
-            try:
-                loop.run_until_complete(_runner())
-            finally:
-                loop.close()
-        return new_func
-    return _outer
-
-
-class AsyncQueueTest(unittest.TestCase):
-
-    @async_test()
     async def test_async_queue(self):
         q = AsyncQueue()
         for i in range(10):
@@ -51,7 +26,6 @@ class AsyncQueueTest(unittest.TestCase):
 
         self.assertEqual(0, q.qsize())
 
-    @async_test()
     async def test_async_queue_generator(self):
         q = AsyncQueue()
 
@@ -70,7 +44,6 @@ class AsyncQueueTest(unittest.TestCase):
         consumer_fut = asyncio.create_task(consumer())
         await asyncio.gather(producer_fut, consumer_fut)
 
-    @async_test()
     async def test_async_lifo_queue(self):
         q = AsyncLIFOQueue()
 
@@ -85,7 +58,6 @@ class AsyncQueueTest(unittest.TestCase):
             self.assertEqual(expected, item)
             expected -= 1
 
-    @async_test()
     async def test_async_priority_queue(self):
         q = AsyncPriorityQueue()
         # Iterate from 100 -> 0
