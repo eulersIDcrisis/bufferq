@@ -168,7 +168,10 @@ class PriorityQueueTests(unittest.TestCase):
 
         # The items should be returned in order due to the relative priority.
         for i in range(20):
+            self.assertFalse(q.empty())
             self.assertEqual(i, q.pop(timeout=0))
+
+        self.assertTrue(q.empty())
 
 
 def _consume_one_func(q, result_list):
