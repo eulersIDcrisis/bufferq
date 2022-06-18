@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bufferq"
-version = "0.0.3"
+version = "0.1.0"
 description = "Queue Library with an improved interface."
 authors = ["Aaron Gibson <eulersidcrisis@yahoo.com>"]
 license = "Apache-2.0"
