@@ -54,8 +54,9 @@ object if you are really, _REALLY_ concerned about blocking)? A `timeout=0`
 should imply a single lookup that fails with `queue.Empty` if nothing is in
 the queue without any additional arguments.
 Yes, there is an added "convenience" call of `queue.Queue.put_nowait()`,
-but this can just as easily be a proxy call to: `put(item, timeout=0)` or
-similar without muddying the primary call for the interface.
+but this can just as easily be a proxy call to: `put(item, timeout=0)` which
+can be added directly for clarity, but without muddying the rest of the
+interface.
 
 This same problem exists (and is more relevant) for the `get()` calls for
 the queue.

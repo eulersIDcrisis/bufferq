@@ -23,11 +23,11 @@ from typing import (
 )
 # Standard Library Imports
 import abc
-import time
 import heapq
 import threading
 from collections import deque
 # Local imports
+from bufferq.util import diff_time
 import bufferq.errors as errors
 
 # Common typing.
@@ -71,7 +71,6 @@ class QueueBase(metaclass=abc.ABCMeta):
 
     def reset(self):
         self._stop_event.clear()
-        pass
 
     def push(self, item: Any, timeout: Number =0):
         """Put the given item onto the queue."""
@@ -173,6 +172,33 @@ class QueueBase(metaclass=abc.ABCMeta):
             except errors.QueueStopped:
                 return
 
+    def empty(self) -> bool:
+        """Return if the queue is empty.
+
+        NOTE: This call is NOT thread-safe and so this result cannot be
+        relied upon in to determine whether to add or remove items!
+
+        Returns
+        -------
+        True if the queue is empty, False otherwise.
+        """
+        return self.qsize() == 0
+
+    def full(self) -> bool:
+        """Return if the queue is full.
+
+        NOTE: This call is NOT thread-safe and so this result cannot be
+        relied upon in to determine whether to add or remove items!
+
+        Returns
+        -------
+        True if the queue is full, False otherwise.
+        """
+        if self.maxsize <= 0:
+            return False
+        return self.qsize() >= self.maxsize
+
+    @abc.abstractmethod
     def qsize(self) -> int:
         """Return the number of elements in the queue.
 
@@ -200,7 +226,7 @@ class QueueBase(metaclass=abc.ABCMeta):
         if timeout is None:
             end_ts = None
         elif timeout > 0:
-            end_ts = time.time() + timeout
+            end_ts = diff_time() + timeout
         else:  # timeout <= 0
             # Guarantee that we only iterate over the loop once.
             end_ts = 0
@@ -214,11 +240,11 @@ class QueueBase(metaclass=abc.ABCMeta):
                     items = qf.remaining_items
                     if end_ts is None:
                         wait_secs = 30.0
-                    elif time.time() > end_ts:
+                    elif diff_time() > end_ts:
                         raise
                     else:
                         # Wait for the remaining time.
-                        wait_secs = min(30.0, end_ts - time.time())
+                        wait_secs = min(30.0, end_ts - diff_time())
                     self._full_cond.wait(wait_secs)
 
     def _pop_item_helper(self, count: int, timeout: Optional[Number]=None):
@@ -233,7 +259,7 @@ class QueueBase(metaclass=abc.ABCMeta):
         if timeout is None:
             end_ts = None
         elif timeout > 0:
-            end_ts = time.time() + timeout
+            end_ts = diff_time() + timeout
         else:  # timeout <= 0
             # Guarantee that we only iterate over the loop once.
             end_ts = 0
@@ -256,13 +282,13 @@ class QueueBase(metaclass=abc.ABCMeta):
                         raise errors.QueueStopped()
                     if end_ts is None:
                         wait_secs = 30.0
-                    elif time.time() > end_ts:
+                    elif diff_time() > end_ts:
                         # We've timed out, so raise QueueEmpty as before.
                         raise
                     else:
                         # Wait for the remaining time or 30 seconds, whichever
                         # is smaller for good measure.
-                        wait_secs = min(30.0, end_ts - time.time())
+                        wait_secs = min(30.0, end_ts - diff_time())
                     self._empty_cond.wait(wait_secs)
 
     #
@@ -298,7 +324,7 @@ class QueueBase(metaclass=abc.ABCMeta):
         Raises
         ------
         QueueEmpty:
-            Raised if the queue is full.
+            Raised if the queue is empty.
         QueueStopped:
             Raised if the queue is stopped.
         """
@@ -360,8 +386,8 @@ class QueueBase(metaclass=abc.ABCMeta):
         Returns
         -------
         list:
-            List of items. The length of this list MUST be greater than 0
-            and less than or equal to 'max_count'
+            List of items. This list will be non-empty with a maximum size
+            equal to (or less than) 'max_count'
 
         Raises
         ------
