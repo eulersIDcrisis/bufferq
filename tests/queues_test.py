@@ -124,7 +124,7 @@ class QueueBaseTests(unittest.TestCase):
 
         res = q.get_all()
         # Use assertSequenceEqual because the result might not be a list.
-        self.assertSequenceEqual([1, 2], res)
+        self.assertSequenceEqual([1, 2], list(res))
 
         try:
             q.put_multi([1, 2, 3])
@@ -136,7 +136,7 @@ class QueueBaseTests(unittest.TestCase):
             raise
 
         res = q.get_all()
-        self.assertSequenceEqual([1, 2], res)
+        self.assertSequenceEqual([1, 2], list(res))
 
 
 class LIFOQueueTests(unittest.TestCase):
@@ -155,6 +155,30 @@ class LIFOQueueTests(unittest.TestCase):
         with self.assertRaises(bufferq.QueueEmpty):
             q.pop(timeout=0)
 
+    def test_maxsize_lifo_queue(self):
+        # Create a maximum queue with a size of 2.
+        q = bufferq.LIFOQueue(maxsize=2)
+        q.put(1)
+        q.put(2)
+
+        with self.assertRaises(bufferq.QueueFull):
+            q.put(666)
+
+        res = q.get_all()
+        # Use assertSequenceEqual because the result might not be a list.
+        self.assertSequenceEqual([2, 1], list(res))
+
+        try:
+            q.put_multi([1, 2, 3])
+            self.fail('Expected call to raise QueueFull!')
+        except bufferq.QueueFull as exc:
+            self.assertSequenceEqual([3], exc.remaining_items)
+        except Exception:
+            # Test handler should catch the explicit exception here.
+            raise
+
+        res = q.get_all()
+        self.assertEqual([2, 1], list(res))
 
 class PriorityQueueTests(unittest.TestCase):
 
@@ -173,6 +197,30 @@ class PriorityQueueTests(unittest.TestCase):
 
         self.assertTrue(q.empty())
 
+    def test_maxsize_priority_queue(self):
+        # Create a maximum queue with a size of 2.
+        q = bufferq.PriorityQueue(maxsize=2)
+        q.put(1)
+        q.put(2)
+
+        with self.assertRaises(bufferq.QueueFull):
+            q.put(666)
+
+        res = q.get_all()
+        # Use assertSequenceEqual because the result might not be a list.
+        self.assertSequenceEqual([1, 2], res)
+
+        try:
+            q.put_multi([1, 2, 3])
+            self.fail('Expected call to raise QueueFull!')
+        except bufferq.QueueFull as exc:
+            self.assertSequenceEqual([3], exc.remaining_items)
+        except Exception:
+            # Test handler should catch the explicit exception here.
+            raise
+
+        res = q.get_all()
+        self.assertSequenceEqual([1, 2], res)
 
 def _consume_one_func(q, result_list):
     for item in q.consume_one_generator():
