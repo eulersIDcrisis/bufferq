@@ -39,6 +39,9 @@ class QueueBaseTests(unittest.TestCase):
 
     def test_basic_operations_sequential(self):
         q = bufferq.Queue()
+        # Maxsize should be a valud indicating unlimited.
+        self.assertTrue(q.maxsize <= 0)
+
         with self.assertRaises(bufferq.QueueEmpty):
             # Should raise, since there is nothing in the queue.
             q.pop(timeout=0)
@@ -116,6 +119,8 @@ class QueueBaseTests(unittest.TestCase):
     def test_maxsize_queue(self):
         # Create a maximum queue with a size of 2.
         q = bufferq.Queue(maxsize=2)
+        self.assertEqual(2, q.maxsize)
+
         q.put(1)
         q.put(2)
 
@@ -143,6 +148,8 @@ class LIFOQueueTests(unittest.TestCase):
 
     def test_lifo_queue(self):
         q = bufferq.LIFOQueue()
+        # Maxsize should be a valud indicating unlimited.
+        self.assertTrue(q.maxsize <= 0)
 
         for i in range(5):
             q.put(i)
@@ -158,6 +165,8 @@ class LIFOQueueTests(unittest.TestCase):
     def test_maxsize_lifo_queue(self):
         # Create a maximum queue with a size of 2.
         q = bufferq.LIFOQueue(maxsize=2)
+        self.assertEqual(2, q.maxsize)
+
         q.put(1)
         q.put(2)
 
@@ -184,6 +193,8 @@ class PriorityQueueTests(unittest.TestCase):
 
     def test_priority_queue(self):
         q = bufferq.PriorityQueue()
+        # Maxsize should be a valud indicating unlimited.
+        self.assertTrue(q.maxsize <= 0)
 
         items = list(range(20))
         random.shuffle(items)
@@ -200,6 +211,8 @@ class PriorityQueueTests(unittest.TestCase):
     def test_maxsize_priority_queue(self):
         # Create a maximum queue with a size of 2.
         q = bufferq.PriorityQueue(maxsize=2)
+        self.assertEqual(2, q.maxsize)
+
         q.put(1)
         q.put(2)
 

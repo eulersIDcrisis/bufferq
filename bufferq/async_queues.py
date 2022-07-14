@@ -39,7 +39,7 @@ class AsyncQueueBase(object, metaclass=abc.ABCMeta):
     This queue is designed to be used in an async context.
     """
 
-    def __init__(self, maxsize : int=None):
+    def __init__(self, maxsize : int=0):
         self._maxsize = maxsize
         self._stopped = False
         self._lock = asyncio.Lock()
@@ -50,7 +50,7 @@ class AsyncQueueBase(object, metaclass=abc.ABCMeta):
     def maxsize(self) -> int:
         """Return the configured maximum size for this queue.
 
-        If 'None' is returned, the size is presumed to be unlimited.
+        If a nonpositive value is returned, the size is unlimited.
         """
         return self._maxsize
 
@@ -189,7 +189,7 @@ class AsyncQueue(AsyncQueueBase):
     (i.e. FIFO).
     """
 
-    def __init__(self, maxsize: int = None):
+    def __init__(self, maxsize: int =0):
         super(AsyncQueue, self).__init__(maxsize=maxsize)
         self._items = deque()
 
@@ -217,7 +217,7 @@ class AsyncLIFOQueue(AsyncQueueBase):
     The elements of this queue are popped in the reverse order they are added.
     """
 
-    def __init__(self, maxsize: int = None):
+    def __init__(self, maxsize: int =0):
         super(AsyncLIFOQueue, self).__init__(maxsize=maxsize)
         self._items = deque()
 

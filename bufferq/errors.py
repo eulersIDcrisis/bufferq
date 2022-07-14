@@ -16,16 +16,18 @@
 
 Error classes for bufferq.
 """
+import queue
+
 
 class QueueError(Exception):
     """Base Exception for queues in bufferq."""
 
 
-class QueueEmpty(QueueError):
+class QueueEmpty(queue.Empty):
     """Exception denoting an empty queue."""
 
 
-class QueueFull(QueueError):
+class QueueFull(queue.Full):
     """Exception denoting the queue is full (and not receiving items)."""
 
     def __init__(self, *args):
