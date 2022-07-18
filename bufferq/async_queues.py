@@ -60,7 +60,7 @@ class AsyncQueueBase(object, metaclass=abc.ABCMeta):
             self._empty_cond.notify_all()
             self._full_cond.notify_all()
 
-    async def push(self, item: Any, timeout: Number=None):
+    async def push(self, item: Any, timeout: Number=0):
         remaining = timeout
         start_ts = diff_time()
         async with self._full_cond:
@@ -89,11 +89,11 @@ class AsyncQueueBase(object, metaclass=abc.ABCMeta):
             # Only get here if the queue is stopped.
             raise QueueStopped('Cannot add item to stopped queue.')
 
-    async def pop(self, timeout: Number=None) -> Any:
+    async def pop(self, timeout: Number=0) -> Any:
         remaining = timeout
         start_ts = diff_time()
         async with self._empty_cond:
-            while True:
+            while not self._stopped:
                 try:
                     item = self._pop_item()
                     # Notify the full condition that an item has been removed.
@@ -116,6 +116,32 @@ class AsyncQueueBase(object, metaclass=abc.ABCMeta):
                             raise qf
                     else:
                         raise
+            # Only get here if the queue is stopped AND empty.
+            raise QueueStopped()
+
+    async def pop_all(self, timeout: Number=0):
+        """Pop all items in the queue, if any."""
+        if timeout is None or timeout < 0:
+            end_ts = None
+        else:
+            end_ts = diff_time() + timeout
+        async with self._empty_cond:
+            while not self._stopped:
+                try:
+                    return self._pop_all()
+                except QueueEmpty as qf:
+                    if end_ts is None:
+                        await self._empty_cond.wait()
+                        continue
+                    remaining = end_ts - diff_time()
+                    if remaining <= 0:
+                        raise
+                    try:
+                        await asyncio.wait_for(
+                            self._empty_cond.wait(), remaining
+                        )
+                    except asyncio.TimeoutError:
+                        raise qf
             # Only get here if the queue is stopped AND empty.
             raise QueueStopped()
 
@@ -180,6 +206,19 @@ class AsyncQueueBase(object, metaclass=abc.ABCMeta):
             Raised if the queue is stopped.
         """
         pass
+
+    #
+    # Optional Overrides
+    #
+    def _pop_all(self):
+        result = []
+        try:
+            while True:
+                result.append(self._pop_item())
+        except (QueueEmpty, QueueStopped):
+            if result:
+                return result
+            raise
 
 
 class AsyncQueue(AsyncQueueBase):
@@ -257,7 +296,7 @@ class AsyncPriorityQueue(AsyncQueueBase):
         return len(self._items)
 
     def _push_item(self, item: Any):
-        if self.maxsize > 0 and self.maxsize > len(self._items):
+        if self.maxsize > 0 and self.maxsize <= len(self._items):
             raise QueueFull()
         heapq.heappush(self._items, item)
 
