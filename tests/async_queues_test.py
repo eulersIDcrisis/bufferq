@@ -14,7 +14,7 @@ class AsyncQueueTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_async_queue(self):
         q = bufferq.AsyncQueue()
-        # Maxsize should be a valud indicating unlimited.
+        # Maxsize should be a value indicating unlimited.
         self.assertTrue(q.maxsize <= 0)
         for i in range(10):
             await q.push(i)
@@ -30,7 +30,7 @@ class AsyncQueueTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_async_queue_generator(self):
         q = bufferq.AsyncQueue()
-        # Maxsize should be a valud indicating unlimited.
+        # Maxsize should be a value indicating unlimited.
         self.assertTrue(q.maxsize <= 0)
 
         async def producer():
@@ -61,7 +61,7 @@ class AsyncQueueTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_async_lifo_queue(self):
         q = bufferq.AsyncLIFOQueue()
-        # Maxsize should be a valud indicating unlimited.
+        # Maxsize should be a value indicating unlimited.
         self.assertTrue(q.maxsize <= 0)
 
         for i in range(100):
