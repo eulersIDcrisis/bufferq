@@ -36,35 +36,10 @@ thd.join()
 
 Here are a few issues:
 
-### Basic Operations
-
-Python's `queue` interface is surprisingly overwhelming for simple tasks.
-
-For example, adding/pushing items to the queue.
-`queue.Queue.put()` has three different arguments:
- 1. The item
- 2. blocking (why?)
- 3. timeout
-(Options 2 and 3 are set so the operation blocks indefinitely until the
-item can be added.)
-
-This is annoying; why have `blocking` and `timeout` as separate arguments,
-instead of simply letting `timeout=0` (or maybe even some placeholder-style
-object if you are really, _REALLY_ concerned about blocking)? A `timeout=0`
-should imply a single lookup that fails with `queue.Empty` if nothing is in
-the queue without any additional arguments.
-Yes, there is an added "convenience" call of `queue.Queue.put_nowait()`,
-but this can just as easily be a proxy call to: `put(item, timeout=0)` which
-can be added directly for clarity, but without muddying the rest of the
-interface.
-
-This same problem exists (and is more relevant) for the `get()` calls for
-the queue.
-
 ### Design Issues
 
-Python's queue also does not provide much help for common tasks that queues
-are used for, such as a list of work for _Producer/Consumer_ design patterns.
+Python's queue does not provide much help for common tasks that queues are
+used for, such as a list of work for _Producer/Consumer_ design patterns.
 Python's own `queue` documentation shows the following
 [example](https://docs.python.org/3/library/queue.html#queue.Queue.join):
 ```python
@@ -125,6 +100,30 @@ consumer()
 ```
 The consumer might be blocked waiting for an element before it has a chance to
 check whether the stop event was set.
+
+### Basic Operations
+
+Python's `queue` interface is also a little sloppy for common operations,
+like adding/pushing items to the queue. `queue.Queue.put()` has three
+different arguments:
+ 1. The item
+ 2. blocking (why?)
+ 3. timeout
+(Options 2 and 3 are set so the operation blocks indefinitely until the
+item can be added.)
+
+This is annoying; why have `blocking` and `timeout` as separate arguments,
+instead of simply letting `timeout=0` (or maybe even some placeholder-style
+object if you are really, _REALLY_ concerned about blocking)? A `timeout=0`
+should imply a single lookup that fails with `queue.Empty` if nothing is in
+the queue without any additional arguments.
+Yes, there is an added "convenience" call of `queue.Queue.put_nowait()`,
+but this can just as easily be a proxy call to: `put(item, timeout=0)` which
+can be added directly for clarity, but without muddying the rest of the
+interface.
+
+This same problem exists (and is more relevant) for the `get()` calls for
+the queue.
 
 ### Better Design
 

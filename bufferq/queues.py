@@ -477,6 +477,13 @@ class LIFOQueue(Queue):
             raise errors.QueueEmpty()
         return self._items.pop()
 
+    def _pop_all(self) -> Sequence[Any]:
+        result = self._items
+        self._items = deque()
+        # Return the items in the reversed order.
+        result.reverse()
+        return result
+
 
 class PriorityQueue(QueueBase):
     """Priority Queue implementation.
@@ -496,7 +503,7 @@ class PriorityQueue(QueueBase):
         return len(self._items)
 
     def _push_item(self, item):
-        if self.maxsize > 0 and self.maxsize > len(self._items):
+        if self.maxsize > 0 and len(self._items) >= self.maxsize:
             raise errors.QueueFull()
         heapq.heappush(self._items, item)
 

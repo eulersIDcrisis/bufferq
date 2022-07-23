@@ -39,6 +39,9 @@ class QueueBaseTests(unittest.TestCase):
 
     def test_basic_operations_sequential(self):
         q = bufferq.Queue()
+        # Maxsize should be a valud indicating unlimited.
+        self.assertTrue(q.maxsize <= 0)
+
         with self.assertRaises(bufferq.QueueEmpty):
             # Should raise, since there is nothing in the queue.
             q.pop(timeout=0)
@@ -116,6 +119,100 @@ class QueueBaseTests(unittest.TestCase):
     def test_maxsize_queue(self):
         # Create a maximum queue with a size of 2.
         q = bufferq.Queue(maxsize=2)
+        self.assertEqual(2, q.maxsize)
+
+        q.put(1)
+        q.put(2)
+
+        with self.assertRaises(bufferq.QueueFull):
+            q.put(666)
+
+        res = q.get_all()
+        # Use assertSequenceEqual because the result might not be a list.
+        self.assertSequenceEqual([1, 2], list(res))
+
+        try:
+            q.put_multi([1, 2, 3])
+            self.fail('Expected call to raise QueueFull!')
+        except bufferq.QueueFull as exc:
+            self.assertSequenceEqual([3], exc.remaining_items)
+        except Exception:
+            # Test handler should catch the explicit exception here.
+            raise
+
+        res = q.get_all()
+        self.assertSequenceEqual([1, 2], list(res))
+
+
+class LIFOQueueTests(unittest.TestCase):
+
+    def test_lifo_queue(self):
+        q = bufferq.LIFOQueue()
+        # Maxsize should be a valud indicating unlimited.
+        self.assertTrue(q.maxsize <= 0)
+
+        for i in range(5):
+            q.put(i)
+
+        # Elements should pop in the reverse order.
+        for i in range(4, -1, -1):
+            self.assertEqual(i, q.pop())
+
+        # No more elements.
+        with self.assertRaises(bufferq.QueueEmpty):
+            q.pop(timeout=0)
+
+    def test_maxsize_lifo_queue(self):
+        # Create a maximum queue with a size of 2.
+        q = bufferq.LIFOQueue(maxsize=2)
+        self.assertEqual(2, q.maxsize)
+
+        q.put(1)
+        q.put(2)
+
+        with self.assertRaises(bufferq.QueueFull):
+            q.put(666)
+
+        res = q.get_all()
+        # Use assertSequenceEqual because the result might not be a list.
+        self.assertSequenceEqual([2, 1], list(res))
+
+        try:
+            q.put_multi([1, 2, 3])
+            self.fail('Expected call to raise QueueFull!')
+        except bufferq.QueueFull as exc:
+            self.assertSequenceEqual([3], exc.remaining_items)
+        except Exception:
+            # Test handler should catch the explicit exception here.
+            raise
+
+        res = q.get_all()
+        self.assertEqual([2, 1], list(res))
+
+class PriorityQueueTests(unittest.TestCase):
+
+    def test_priority_queue(self):
+        q = bufferq.PriorityQueue()
+        # Maxsize should be a valud indicating unlimited.
+        self.assertTrue(q.maxsize <= 0)
+
+        items = list(range(20))
+        random.shuffle(items)
+
+        q.put_multi(items)
+
+        # The items should be returned in order due to the relative priority.
+        for i in range(20):
+            self.assertFalse(q.empty())
+            self.assertEqual(i, q.pop(timeout=0))
+
+        self.assertTrue(q.empty())
+
+    def test_maxsize_priority_queue(self):
+        # Create a maximum queue with a size of 2.
+        q = bufferq.PriorityQueue(maxsize=2)
+        self.assertEqual(2, q.maxsize)
+
         q.put(1)
         q.put(2)
 
@@ -137,42 +234,6 @@ class QueueBaseTests(unittest.TestCase):
 
         res = q.get_all()
         self.assertSequenceEqual([1, 2], res)
-
-
-class LIFOQueueTests(unittest.TestCase):
-
-    def test_lifo_queue(self):
-        q = bufferq.LIFOQueue()
-
-        for i in range(5):
-            q.put(i)
-
-        # Elements should pop in the reverse order.
-        for i in range(4, -1, -1):
-            self.assertEqual(i, q.pop())
-
-        # No more elements.
-        with self.assertRaises(bufferq.QueueEmpty):
-            q.pop(timeout=0)
-
-
-class PriorityQueueTests(unittest.TestCase):
-
-    def test_priority_queue(self):
-        q = bufferq.PriorityQueue()
-
-        items = list(range(20))
-        random.shuffle(items)
-
-        q.put_multi(items)
-
-        # The items should be returned in order due to the relative priority.
-        for i in range(20):
-            self.assertFalse(q.empty())
-            self.assertEqual(i, q.pop(timeout=0))
-
-        self.assertTrue(q.empty())
-
 
 def _consume_one_func(q, result_list):
     for item in q.consume_one_generator():
