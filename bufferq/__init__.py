@@ -15,19 +15,29 @@
 try:
     import pkg_resources
 
-    __version__ = pkg_resources.get_distribution('bufferq').version
+    __version__ = pkg_resources.get_distribution("bufferq").version
 except Exception:
-    __version__ = 'unknown'
+    __version__ = "unknown"
 
 # Bring the following imports into scope.
-from bufferq.queues import (
-    QueueBase, Queue, PriorityQueue, LIFOQueue
-)
-from bufferq.errors import (
-    QueueError, QueueEmpty, QueueFull, QueueStopped
-)
+from bufferq.base import AbstractQueue, AsyncAbstractQueue
+from bufferq.queues import Queue, PriorityQueue, LIFOQueue
+from bufferq.errors import QueueError, QueueEmpty, QueueFull, QueueStopped
 
 # Bring the following Asynchronous queues into scope as well.
-from bufferq.async_queues import (
-    AsyncQueueBase, AsyncQueue, AsyncLIFOQueue, AsyncPriorityQueue
-)
+from bufferq.async_queues import AsyncQueue, AsyncLIFOQueue, AsyncPriorityQueue
+
+__all__ = [
+    "QueueError",
+    "QueueEmpty",
+    "QueueFull",
+    "QueueStopped",
+    "AbstractQueue",
+    "Queue",
+    "PriorityQueue",
+    "LIFOQueue",
+    "AsyncAbstractQueue",
+    "AsyncQueue",
+    "AsyncLIFOQueue",
+    "AsyncPriorityQueue",
+]

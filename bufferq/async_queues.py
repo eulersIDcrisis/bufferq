@@ -16,219 +16,26 @@
 
 Module implementing some common (asynchronous) buffering utilities.
 """
-# Typing Imports
-from typing import (
-    Optional, Any, AsyncGenerator, Union, Sequence
-)
-# Common typing.
-Number = Union[int, float]
+from collections.abc import Sequence
+from typing import Any
 
 # Standard Library Imports
-import abc
 import heapq
-import asyncio
 from collections import deque
+
 # Local Imports
-from bufferq.util import diff_time
-from bufferq.errors import QueueStopped, QueueFull, QueueEmpty
+from bufferq.errors import QueueEmpty, QueueFull
+from bufferq.base import AsyncAbstractQueue
 
 
-class AsyncQueueBase(object, metaclass=abc.ABCMeta):
-    """An asynchronous Queue, similar to bufferq.Queue.
-
-    This queue is designed to be used in an async context.
-    """
-
-    def __init__(self, maxsize : int=0):
-        self._maxsize = maxsize
-        self._stopped = False
-        self._lock = asyncio.Lock()
-        self._empty_cond = asyncio.Condition(self._lock)
-        self._full_cond = asyncio.Condition(self._lock)
-
-    @property
-    def maxsize(self) -> int:
-        """Return the configured maximum size for this queue.
-
-        If a nonpositive value is returned, the size is unlimited.
-        """
-        return self._maxsize
-
-    async def stop(self) -> None:
-        async with self._lock:
-            self._stopped = True
-            self._empty_cond.notify_all()
-            self._full_cond.notify_all()
-
-    async def push(self, item: Any, timeout: Number=0):
-        remaining = timeout
-        start_ts = diff_time()
-        async with self._full_cond:
-            while not self._stopped:
-                try:
-                    self._push_item(item)
-                    # Notify the empty condition that an item has been added.
-                    self._empty_cond.notify()
-                    return
-                except QueueFull as qf:
-                    if remaining is None:
-                        await self._full_cond.wait()
-                    elif remaining > 0:
-                        wait_fut = self._full_cond.wait()
-                        try:
-                            await asyncio.wait_for(wait_fut, remaining)
-                        except asyncio.TimeoutError:
-                            # Don't raise the timeout error, but raise the
-                            # original QueueFull error.
-                            raise qf
-                        # Update the remaining time since we've waited a bit.
-                        remaining = diff_time() - remaining
-                    else:
-                        raise
-
-            # Only get here if the queue is stopped.
-            raise QueueStopped('Cannot add item to stopped queue.')
-
-    async def pop(self, timeout: Number=0) -> Any:
-        remaining = timeout
-        start_ts = diff_time()
-        async with self._empty_cond:
-            while not self._stopped:
-                try:
-                    item = self._pop_item()
-                    # Notify the full condition that an item has been removed.
-                    self._full_cond.notify()
-                    return item
-                except QueueEmpty as qf:
-                    # Exit the loop if there is nothing else to pop.
-                    if self._stopped:
-                        break
-                    # Handle the timeout.
-                    if remaining is None:
-                        await self._empty_cond.wait()
-                    elif remaining > 0:
-                        try:
-                            await asyncio.wait_for(
-                                self._empty_cond.wait(),
-                                remaining)
-                        except asyncio.TimeoutError:
-                            # Raise QueueEmpty instead of the timeout.
-                            raise qf
-                    else:
-                        raise
-            # Only get here if the queue is stopped AND empty.
-            raise QueueStopped()
-
-    async def pop_all(self, timeout: Number=0):
-        """Pop all items in the queue, if any."""
-        if timeout is None or timeout < 0:
-            end_ts = None
-        else:
-            end_ts = diff_time() + timeout
-        async with self._empty_cond:
-            while not self._stopped:
-                try:
-                    return self._pop_all()
-                except QueueEmpty as qf:
-                    if end_ts is None:
-                        await self._empty_cond.wait()
-                        continue
-                    remaining = end_ts - diff_time()
-                    if remaining <= 0:
-                        raise
-                    try:
-                        await asyncio.wait_for(
-                            self._empty_cond.wait(), remaining
-                        )
-                    except asyncio.TimeoutError:
-                        raise qf
-            # Only get here if the queue is stopped AND empty.
-            raise QueueStopped()
-
-    async def consume_one_generator(self) -> AsyncGenerator[Any, None]:
-        try:
-            while True:
-                item = await self.pop()
-                yield item
-        except QueueStopped:
-            return
-
-    def empty(self) -> bool:
-        """Return if the queue is empty."""
-        return self.qsize() == 0
-
-    def full(self) -> bool:
-        """Return if the queue is full."""
-        if self.maxsize <= 0:
-            return False
-        return self.qsize() >= self.maxsize
-
-    #
-    # Required Overrideable Methods by Subclasses
-    #
-    @abc.abstractmethod
-    def qsize(self) -> int:
-        """Return the number of items currently in the queue."""
-        return 0
-
-    @abc.abstractmethod
-    def _push_item(self, item: Any):
-        """Push the given item onto the queue without blocking.
-
-        This should push a single item onto the queue, or raise QueueFull
-        if the item could not be added.
-
-        Parameters
-        ----------
-        item: Any
-            The item to push onto the queue.
-
-        Raises
-        ------
-        QueueFull:
-            Raised if the queue is full.
-        QueueStopped:
-            Raised if the queue is stopped.
-        """
-        pass
-
-    @abc.abstractmethod
-    def _pop_item(self) -> Any:
-        """Pop an item from the queue without blocking.
-
-        If no item is available, this should raise `QueueEmpty`.
-
-        Raises
-        ------
-        QueueEmpty:
-            Raised if the queue is full.
-        QueueStopped:
-            Raised if the queue is stopped.
-        """
-        pass
-
-    #
-    # Optional Overrides
-    #
-    def _pop_all(self):
-        result = []
-        try:
-            while True:
-                result.append(self._pop_item())
-        except (QueueEmpty, QueueStopped):
-            if result:
-                return result
-            raise
-
-
-class AsyncQueue(AsyncQueueBase):
+class AsyncQueue(AsyncAbstractQueue):
     """Asynchronous queue with a similar interface to bufferq.Queue.
 
     The elements of this queue are popped in the same order they are added
     (i.e. FIFO).
     """
 
-    def __init__(self, maxsize: int =0):
+    def __init__(self, maxsize: int = 0):
         super(AsyncQueue, self).__init__(maxsize=maxsize)
         self._items = deque()
 
@@ -250,13 +57,13 @@ class AsyncQueue(AsyncQueueBase):
         raise QueueEmpty()
 
 
-class AsyncLIFOQueue(AsyncQueueBase):
+class AsyncLIFOQueue(AsyncQueue):
     """Asynchronous queue with a similar interface to bufferq.LIFOQueue.
 
     The elements of this queue are popped in the reverse order they are added.
     """
 
-    def __init__(self, maxsize: int =0):
+    def __init__(self, maxsize: int = 0):
         super(AsyncLIFOQueue, self).__init__(maxsize=maxsize)
         self._items = deque()
 
@@ -278,15 +85,15 @@ class AsyncLIFOQueue(AsyncQueueBase):
         raise QueueEmpty()
 
 
-class AsyncPriorityQueue(AsyncQueueBase):
+class AsyncPriorityQueue(AsyncAbstractQueue):
     """Asynchronous queue with a similar interface to bufferq.PriorityQueue.
 
     The minimum/smallest element is the next item to be removed.
     """
 
-    def __init__(self, maxsize: int =0):
+    def __init__(self, maxsize: int = 0):
         super(AsyncPriorityQueue, self).__init__(maxsize=maxsize)
-        self._items: List[Any] = []
+        self._items = []
 
     def qsize(self) -> int:
         """Return the number of elements in the queue.
