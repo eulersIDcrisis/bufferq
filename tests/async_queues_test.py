@@ -11,7 +11,6 @@ import bufferq
 
 
 class AsyncQueueTest(unittest.IsolatedAsyncioTestCase):
-
     async def test_async_queue(self):
         q = bufferq.AsyncQueue()
         # Maxsize should be a value indicating unlimited.
@@ -116,5 +115,5 @@ class AsyncQueueTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([1, 2], list(items))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bufferq"
-version = "0.1.1"
+version = "0.1.2"
 description = "Queue Library with an improved interface."
 authors = ["Aaron Gibson <eulersidcrisis@yahoo.com>"]
 license = "Apache-2.0"
@@ -19,8 +19,9 @@ classifiers = [
 [tool.poetry.dependencies]
 python = "^3.8"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^7.1.1"
+black = "^23.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

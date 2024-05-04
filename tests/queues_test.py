@@ -20,6 +20,7 @@ import random
 import unittest
 import threading
 from contextlib import contextmanager
+
 # BufferQ imports.
 import bufferq
 
@@ -36,7 +37,6 @@ def generate_on_thread(func):
 
 
 class QueueBaseTests(unittest.TestCase):
-
     def test_basic_operations_sequential(self):
         q = bufferq.Queue()
         # Maxsize should be a valud indicating unlimited.
@@ -79,13 +79,13 @@ class QueueBaseTests(unittest.TestCase):
     def test_stop_and_reset(self):
         q = bufferq.Queue()
 
-        q.put('a')
+        q.put("a")
         q.stop()
         with self.assertRaises(bufferq.QueueStopped):
-            q.put('a')
+            q.put("a")
 
         item = q.get(timeout=1)
-        self.assertEqual('a', item)
+        self.assertEqual("a", item)
 
         # This should raise QueueStopped to flag that the queue is both
         # empty and stopped.
@@ -94,10 +94,10 @@ class QueueBaseTests(unittest.TestCase):
 
         q.reset()
         # After reset, this should succeed again.
-        q.put('b')
+        q.put("b")
 
         item = q.get(timeout=0)
-        self.assertEqual('b', item)
+        self.assertEqual("b", item)
 
     def test_basic_producer_consumer(self):
         q = bufferq.Queue()
@@ -133,7 +133,7 @@ class QueueBaseTests(unittest.TestCase):
 
         try:
             q.put_multi([1, 2, 3])
-            self.fail('Expected call to raise QueueFull!')
+            self.fail("Expected call to raise QueueFull!")
         except bufferq.QueueFull as exc:
             self.assertSequenceEqual([3], exc.remaining_items)
         except Exception:
@@ -145,7 +145,6 @@ class QueueBaseTests(unittest.TestCase):
 
 
 class LIFOQueueTests(unittest.TestCase):
-
     def test_lifo_queue(self):
         q = bufferq.LIFOQueue()
         # Maxsize should be a valud indicating unlimited.
@@ -179,7 +178,7 @@ class LIFOQueueTests(unittest.TestCase):
 
         try:
             q.put_multi([1, 2, 3])
-            self.fail('Expected call to raise QueueFull!')
+            self.fail("Expected call to raise QueueFull!")
         except bufferq.QueueFull as exc:
             self.assertSequenceEqual([3], exc.remaining_items)
         except Exception:
@@ -189,8 +188,8 @@ class LIFOQueueTests(unittest.TestCase):
         res = q.get_all()
         self.assertEqual([2, 1], list(res))
 
-class PriorityQueueTests(unittest.TestCase):
 
+class PriorityQueueTests(unittest.TestCase):
     def test_priority_queue(self):
         q = bufferq.PriorityQueue()
         # Maxsize should be a valud indicating unlimited.
@@ -225,7 +224,7 @@ class PriorityQueueTests(unittest.TestCase):
 
         try:
             q.put_multi([1, 2, 3])
-            self.fail('Expected call to raise QueueFull!')
+            self.fail("Expected call to raise QueueFull!")
         except bufferq.QueueFull as exc:
             self.assertSequenceEqual([3], exc.remaining_items)
         except Exception:
@@ -235,24 +234,22 @@ class PriorityQueueTests(unittest.TestCase):
         res = q.get_all()
         self.assertSequenceEqual([1, 2], res)
 
+
 def _consume_one_func(q, result_list):
     for item in q.consume_one_generator():
         result_list.append(item)
 
 
 class ConcurrentTests(unittest.TestCase):
-
     def test_consume_one_generator(self):
         q = bufferq.Queue()
 
         thd1_list = []
-        thd1 = threading.Thread(
-            target=_consume_one_func, args=(q, thd1_list))
+        thd1 = threading.Thread(target=_consume_one_func, args=(q, thd1_list))
         thd1.daemon = True
 
         thd2_list = []
-        thd2 = threading.Thread(
-            target=_consume_one_func, args=(q, thd2_list))
+        thd2 = threading.Thread(target=_consume_one_func, args=(q, thd2_list))
         thd2.daemon = True
 
         # Start the consumers.
